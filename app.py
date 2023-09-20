@@ -81,4 +81,3 @@ if uploaded_file is not None:
 
         stframe.markdown(f'<img src="data:image/jpeg;base64,{frame_base64}"/>', unsafe_allow_html=True)
     cap.release()
-cv2.destroyAllWindows()
