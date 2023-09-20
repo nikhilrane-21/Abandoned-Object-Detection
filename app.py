@@ -1,11 +1,19 @@
-import numpy as np
 import cv2
 import streamlit as st
 import tempfile
+import base64
+import numpy as np
 from collections import Counter, defaultdict
 
-def generate_processed_frames(video_path, threshold1, threshold2):
-    cap = cv2.VideoCapture(video_path)
+st.title("Abandoned Object Detection")
+uploaded_file = st.file_uploader("Choose a video file", type=["mp4", "avi", "mkv", "mov"])
+threshold1 = st.sidebar.slider('Min Threshold', min_value=0, max_value=255, value=10)
+threshold2 = st.sidebar.slider('Max Threshold', min_value=0, max_value=255, value=200)
+
+if uploaded_file is not None:
+    temp_file = tempfile.NamedTemporaryFile(delete=False)
+    temp_file.write(uploaded_file.read())
+    cap = cv2.VideoCapture(temp_file.name)
     _, firstframe = cap.read()
     consecutiveframe = 20
     track_temp = []
@@ -15,22 +23,19 @@ def generate_processed_frames(video_path, threshold1, threshold2):
     obj_detected_dict = defaultdict(int)
     frameno = 0
 
-    while cap.isOpened():
+    stframe = st.empty()
+    while (cap.isOpened()):
         ret, frame = cap.read()
-        if ret == 0:
+        if ret==0:
             break
         frameno = frameno + 1
         frame_diff = cv2.absdiff(firstframe, frame)
-
         edged = cv2.Canny(frame_diff, threshold1, threshold2)
-
         kernel2 = np.ones((5, 5), np.uint8)
         thresh2 = cv2.morphologyEx(edged, cv2.MORPH_CLOSE, kernel2, iterations=2)
-
         (cnts, _) = cv2.findContours(thresh2.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         mycnts = []
-
         for c in cnts:
             area = cv2.contourArea(c)
             M = cv2.moments(c)
@@ -67,30 +72,13 @@ def generate_processed_frames(video_path, threshold1, threshold2):
                             cv2.putText(frame, 'Area:' + str(area), (x + w + 20, y + 45),
                                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
                             obj_detected_dict[sumcxcy] = frameno
-
         for i, j in list(obj_detected_dict.items()):
             if frameno - obj_detected_dict[i] > 200:
                 obj_detected_dict.pop(i)
                 top_contour_dict[i] = 0
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_base64 = base64.b64encode(buffer).decode()
 
-        yield frame
-
+        stframe.markdown(f'<img src="data:image/jpeg;base64,{frame_base64}"/>', unsafe_allow_html=True)
     cap.release()
-
-
-st.title("Abandoned Object Detection")
-
-uploaded_file = st.file_uploader("Choose a video file", type=["mp4", "avi", "mkv", "mov"])
-if uploaded_file is not None:
-    temp_file = tempfile.NamedTemporaryFile(delete=False)
-    temp_file.write(uploaded_file.read())
-    video_path = temp_file.name
-
-    threshold1 = st.sidebar.slider('Min Threshold', min_value=0, max_value=255, value=10)
-    threshold2 = st.sidebar.slider('Max Threshold', min_value=0, max_value=255, value=200)
-
-    stframe = st.empty()
-
-    for frame in generate_processed_frames(video_path, threshold1, threshold2):
-        stframe.image(frame, channels="BGR")
-
+    cv2.destroyAllWindows()
